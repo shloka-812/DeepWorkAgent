@@ -14,9 +14,11 @@ def test_analyzer(observer_output):
     analyzer = get_analyzer_agent()
     
     # 3. Define Task
+    history_ctx_str = "No historical data available for this user yet."
     task = Task(
         description=ANALYZER_TASK_PROMPT.format(
-            observer_output=json.dumps(observer_output, indent=2)
+            observer_output=json.dumps(observer_output, indent=2),
+            history_context=history_ctx_str
         ),
         expected_output="JSON verdict and escalation strategy.",
         agent=analyzer

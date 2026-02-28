@@ -12,7 +12,10 @@ from db.logger import start_session, end_session, log_tab_event, log_agent_decis
 agent_context = {
     "calendar": None,
     "focus_active": False,
-    "history": {}
+    "history": {},
+    "current_app": None,
+    "current_window": None,
+    "inferred_task_mac": None
 }
 
 async def meeting_check_loop():
@@ -93,23 +96,29 @@ async def handle_intent_response(data: dict):
 @app.post("/event", response_model=AgentResponse)
 async def handle_event(event: TabEvent):
     print(f"Received event: {event.event} from {event.source}")
+
+    # 1. Update context caches for cross-sensor triangulation
+    if event.source == "mac_system":
+        agent_context["current_app"] = event.app
+        agent_context["current_window"] = event.window_title
+        agent_context["inferred_task_mac"] = event.inferred_task
     
-    # Handle session events
+    # 2. Enrich browser events with Mac context
+    if event.source == "browser":
+        if not event.app:
+            event.app = agent_context.get("current_app") or "Chrome"
+        if not event.window_title:
+             event.window_title = agent_context.get("current_window")
+
+    # 3. Handle session events
     if event.event == "session_start":
         agent_context["focus_active"] = True
         try:
-            # 1. Start Snowflake Session
             await asyncio.to_thread(start_session, calendar_task="Focus Session")
-            
-            # 2. Fetch real calendar context
             calendar = await asyncio.to_thread(get_current_and_next_event)
             agent_context["calendar"] = calendar
-            
-            # 3. Fetch historical context from Snowflake
             history = await asyncio.to_thread(get_session_context)
             agent_context["history"] = history
-            
-            print(f"[Session Start] Active task: {calendar.get('current_event')}")
             return AgentResponse(action="none", reasoning=f"Session started. Task: {calendar.get('current_event')}")
         except Exception as e:
             print(f"[Session Start Error] {e}")
@@ -120,44 +129,43 @@ async def handle_event(event: TabEvent):
         await asyncio.to_thread(end_session)
         return AgentResponse(action="none", reasoning="Session ended.")
 
+    # 4. Handle Return-to-Work (Cancels Escalations)
     if event.event in ["work_return", "focus_return"]:
-        # Cancel any pending escalations when user returns to work
         key = get_escalation_key(event.domain, event.app)
         cancel_escalations(key)
         return AgentResponse(action="none", reasoning="User returned to work. Escalations cancelled.")
 
-    # Log the incoming tab event to Snowflake
+    # 5. Log activity to Snowflake
     if event.event != "heartbeat":
         await asyncio.to_thread(log_tab_event, event.dict())
 
-    # Run the Agent Brain for activity events
+    # 6. Run the Agent Brain
     try:
-        # Pass calendar AND historical context to the crew run
         response = run_crew(
             event, 
             calendar_context=agent_context.get("calendar"),
             history_context=agent_context.get("history")
         )
         
-        # Log the agent decision to Snowflake
+        # Log decision
         decision_data = event.dict()
         decision_data.update(response.dict())
         await asyncio.to_thread(log_agent_decision, decision_data)
         
-        # 1. Start immediate Slack nudge if requested
+        # Execute immediate actions
         if response.slack_message:
             await asyncio.to_thread(send_slack_nudge, response.slack_message)
 
-        # 2. If there is an escalation schedule, start the timers
+        # Schedule future escalations
         if response.escalation_schedule:
             key = get_escalation_key(event.domain, event.app)
             await schedule_escalations(key, response.escalation_schedule)
-
             
         return response
     except Exception as e:
         print(f"Crew error: {e}")
         return AgentResponse(action="none", reasoning=f"Agent Error: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
