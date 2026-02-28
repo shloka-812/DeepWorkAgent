@@ -1,0 +1,27 @@
+# ── Python ────────────────────────────────────────────────────────────
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Secrets — NEVER commit real .env ─────────────────────────────────
+backend/.env
+
+# ── Node ──────────────────────────────────────────────────────────────
+extension/node_modules/
+extension/dist/
+extension/.vite/
+
+# ── IDE ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

@@ -1,0 +1,25 @@
+# ── Core API ──────────────────────────────────────────────────────────
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+requests
+httpx
+
+# ── Agent / LLM ───────────────────────────────────────────────────────
+crewai
+crewai-tools
+langchain-groq          # PRIMARY: Groq Llama 3.1-70b (real-time decisions)
+groq
+langchain-openai        # FALLBACK only
+openai
+
+# ── Integrations ──────────────────────────────────────────────────────
+composio-crewai
+composio-core
+
+# ── Memory ────────────────────────────────────────────────────────────
+snowflake-connector-python
+
+# ── Mac Monitor (Phase 6 — macOS only) ────────────────────────────────
+# pip install pyobjc-framework-Quartz   ← install separately, macOS only
