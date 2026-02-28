@@ -1,9 +1,10 @@
 // Deep Work Agent - Content Script (Overlay & Nudge UI)
 // Runs on all web pages to handle overlay injection and user interactions
 
-// Track currently displayed overlay/nudge
+// Track currently displayed overlay/nudge/dialog
 let currentOverlay = null;
 let currentNudge = null;
+let currentIntentDialog = null;
 
 // Listen for messages from background service worker
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -11,18 +12,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     handleAgentResponse(request.payload);
     sendResponse({ received: true });
   }
+  if (request.type === 'SHOW_INTENT_DIALOG') {
+    showIntentDialog(request.question || 'Is this visit work-related?');
+    sendResponse({ received: true });
+  }
+  if (request.type === 'DISMISS_INTENT_DIALOG') {
+    if (currentIntentDialog) {
+      currentIntentDialog.remove();
+      currentIntentDialog = null;
+    }
+    sendResponse({ received: true });
+  }
 });
 
 // Handle different agent responses
 function handleAgentResponse(response) {
-  const { action, message, duration = 5000 } = response;
+  const { action, message, duration = 5000, ask_question } = response;
   
-  if (action === 'nudge') {
+  if (action === 'nudge' || action === 'show_nudge') {
     showNudge(message, duration);
-  } else if (action === 'block') {
+  } else if (action === 'block' || action === 'block_tab') {
     showBlock(message);
+  } else if (action === 'ask') {
+    showIntentDialog(ask_question || 'Is this visit work-related?');
   } else if (action === 'log') {
     console.log('[Deep Work Agent]', message);
+  } else if (action === 'monitor' || action === 'none') {
+    // Silent monitoring - no UI action needed
+    console.log('[Deep Work Agent] Monitoring:', message);
   }
 }
 
@@ -263,6 +280,171 @@ function showBlock(message) {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) return; // Don't dismiss on background click
   });
+}
+
+// ─── Intent Dialog (ASK action) ───────────────────────────────────────
+// Shows a dialog asking user if their visit is work-related
+function showIntentDialog(question) {
+  // Remove existing dialog
+  if (currentIntentDialog) {
+    currentIntentDialog.remove();
+  }
+
+  const dialog = document.createElement('div');
+  dialog.id = 'dwa-intent-dialog';
+  dialog.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 320px;
+    background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 12px;
+    padding: 20px;
+    z-index: 2147483647;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 40px rgba(34, 197, 94, 0.1);
+    animation: dwaSlideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  `;
+
+  dialog.innerHTML = `
+    <style>
+      @keyframes dwaSlideIn {
+        from { transform: translateX(20px) scale(0.95); opacity: 0; }
+        to { transform: translateX(0) scale(1); opacity: 1; }
+      }
+      @keyframes dwaPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      #dwa-intent-dialog .dwa-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      #dwa-intent-dialog .dwa-icon {
+        font-size: 20px;
+        animation: dwaPulse 2s ease-in-out infinite;
+      }
+      #dwa-intent-dialog .dwa-label {
+        font-size: 11px;
+        color: #22c55e;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      #dwa-intent-dialog .dwa-question {
+        font-size: 14px;
+        color: #e0e0e0;
+        line-height: 1.5;
+        margin-bottom: 16px;
+      }
+      #dwa-intent-dialog .dwa-buttons {
+        display: flex;
+        gap: 10px;
+      }
+      #dwa-intent-dialog .dwa-btn {
+        flex: 1;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+      }
+      #dwa-intent-dialog .dwa-btn-yes {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: #000;
+      }
+      #dwa-intent-dialog .dwa-btn-yes:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+      }
+      #dwa-intent-dialog .dwa-btn-no {
+        background: transparent;
+        border: 1px solid #444;
+        color: #888;
+      }
+      #dwa-intent-dialog .dwa-btn-no:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: #666;
+        color: #aaa;
+      }
+      #dwa-intent-dialog .dwa-timer {
+        font-size: 10px;
+        color: #555;
+        text-align: center;
+        margin-top: 12px;
+      }
+    </style>
+    <div class="dwa-header">
+      <span class="dwa-icon">🎯</span>
+      <span class="dwa-label">Quick check</span>
+    </div>
+    <p class="dwa-question">${question}</p>
+    <div class="dwa-buttons">
+      <button class="dwa-btn dwa-btn-yes" id="dwa-intent-yes">✅ Yes, it's work</button>
+      <button class="dwa-btn dwa-btn-no" id="dwa-intent-no">❌ No, distraction</button>
+    </div>
+    <p class="dwa-timer" id="dwa-timer-text">Auto-dismissing in 30s...</p>
+  `;
+
+  document.body.appendChild(dialog);
+  currentIntentDialog = dialog;
+
+  // Handle "Yes" button - user confirms work intent
+  document.getElementById('dwa-intent-yes').onclick = () => {
+    dialog.remove();
+    currentIntentDialog = null;
+    // Notify backend that user confirmed work intent
+    fetch('http://localhost:8000/intent_response', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'work_related', url: window.location.href })
+    }).catch((err) => console.error('[DeepWork] Intent response error:', err));
+    // Show brief confirmation
+    showNudge('✅ Got it! Continue working.', 2000);
+  };
+
+  // Handle "No" button - user admits distraction
+  document.getElementById('dwa-intent-no').onclick = () => {
+    dialog.remove();
+    currentIntentDialog = null;
+    // Notify backend that user admitted distraction
+    fetch('http://localhost:8000/intent_response', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ intent: 'distraction', url: window.location.href })
+    }).catch((err) => console.error('[DeepWork] Intent response error:', err));
+    // Show block overlay
+    showBlock("Good call! Let's get back to focused work.");
+  };
+
+  // Auto-dismiss after 30s with countdown
+  let countdown = 30;
+  const timerText = document.getElementById('dwa-timer-text');
+  const timer = setInterval(() => {
+    countdown--;
+    if (timerText) {
+      timerText.textContent = `Auto-dismissing in ${countdown}s...`;
+    }
+    if (countdown <= 0) {
+      clearInterval(timer);
+      if (currentIntentDialog) {
+        dialog.remove();
+        currentIntentDialog = null;
+        // No response = treat as distraction
+        fetch('http://localhost:8000/intent_response', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intent: 'no_response', url: window.location.href })
+        }).catch(() => {});
+        showBlock("No response — let's refocus.");
+      }
+    }
+  }, 1000);
 }
 
 console.log('Deep Work Agent - Content script loaded');

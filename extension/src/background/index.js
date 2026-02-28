@@ -102,13 +102,8 @@ function sendToBackend(eventPayload, tabId) {
         }
       });
       
-      // Send message to content script on this tab
-      chrome.tabs.sendMessage(tabId, {
-        type: 'AGENT_RESPONSE',
-        payload: data
-      }).catch(() => {
-        // Content script might not be loaded yet, which is fine
-      });
+      // Handle different action types from backend
+      handleAgentResponse(data, tabId);
     })
     .catch(error => {
       console.error('Backend communication error:', error);
@@ -123,22 +118,120 @@ function sendToBackend(eventPayload, tabId) {
     });
 }
 
+// Handle agent response and dispatch appropriate action
+async function handleAgentResponse(response, tabId) {
+  const { action, message, ask_question } = response;
+
+  switch (action) {
+    case 'block_tab':
+    case 'block':
+      // Send to content script to show full-page block overlay
+      chrome.tabs.sendMessage(tabId, {
+        type: 'AGENT_RESPONSE',
+        payload: { action: 'block', message: message || "Stay focused!" }
+      }).catch(() => {});
+      incrementInterventionCount();
+      break;
+
+    case 'show_nudge':
+    case 'nudge':
+      // Send to content script to show toast nudge
+      chrome.tabs.sendMessage(tabId, {
+        type: 'AGENT_RESPONSE',
+        payload: { action: 'nudge', message: message || "Time to refocus?" }
+      }).catch(() => {});
+      // Also show Chrome notification
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'Deep Work Agent',
+        message: message || "Heads up — you might be drifting.",
+        priority: 2
+      });
+      incrementInterventionCount();
+      break;
+
+    case 'ask':
+      // Send to content script to show intent dialog
+      chrome.tabs.sendMessage(tabId, {
+        type: 'SHOW_INTENT_DIALOG',
+        question: ask_question || 'Is this visit work-related?'
+      }).catch(() => {});
+      break;
+
+    case 'monitor':
+      // Silent monitoring — log only, no UI
+      console.log('[DeepWork] Monitoring - escalation scheduled by backend');
+      break;
+
+    case 'none':
+    case 'allow':
+    default:
+      // No action needed
+      console.log('[DeepWork] Allowed:', message);
+      break;
+  }
+}
+
+// Increment intervention count in storage
+async function incrementInterventionCount() {
+  const result = await chrome.storage.local.get(['interventionCount']);
+  const count = (result.interventionCount || 0) + 1;
+  await chrome.storage.local.set({ interventionCount: count });
+}
+
 // Message listener for popup and content script communication
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'START_SESSION') {
     sessionActive = true;
-    chrome.storage.local.set({ sessionActive: true });
+    chrome.storage.local.set({ 
+      sessionActive: true,
+      sessionStartTime: Date.now(),
+      interventionCount: 0
+    });
     tabStartTime = {}; // Reset dwell timers
     tabDwellTime = {};
+    // Notify backend of session start
+    fetch('http://localhost:8000/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'session_start', timestamp: Date.now() })
+    }).catch(() => {});
     sendResponse({ success: true, message: 'Session started' });
   } 
   else if (request.type === 'STOP_SESSION') {
     sessionActive = false;
-    chrome.storage.local.set({ sessionActive: false });
+    chrome.storage.local.get(['sessionStartTime'], (result) => {
+      const duration = result.sessionStartTime 
+        ? Math.floor((Date.now() - result.sessionStartTime) / 1000) 
+        : 0;
+      chrome.storage.local.set({ sessionActive: false });
+      // Notify backend of session end
+      fetch('http://localhost:8000/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'session_end', durationSeconds: duration })
+      }).catch(() => {});
+    });
     sendResponse({ success: true, message: 'Session stopped' });
   }
   else if (request.type === 'GET_SESSION_STATUS') {
     sendResponse({ sessionActive: sessionActive });
+  }
+  else if (request.type === 'GET_SESSION_STATS') {
+    // Return full session stats for popup
+    chrome.storage.local.get(['sessionActive', 'sessionStartTime', 'interventionCount'], (result) => {
+      const durationSeconds = result.sessionStartTime && result.sessionActive
+        ? Math.floor((Date.now() - result.sessionStartTime) / 1000)
+        : 0;
+      sendResponse({
+        sessionActive: result.sessionActive || false,
+        sessionStartTime: result.sessionStartTime || null,
+        durationSeconds: durationSeconds,
+        interventionCount: result.interventionCount || 0
+      });
+    });
+    return true; // Indicate async response
   }
   else if (request.type === 'GET_CURRENT_TAB') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {

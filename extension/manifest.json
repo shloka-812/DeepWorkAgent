@@ -1,21 +1,22 @@
 {
   "manifest_version": 3,
   "name": "Deep Work Agent",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "AI-powered browser monitoring for deep work focus",
   "permissions": [
     "tabs",
     "activeTab",
     "scripting",
     "storage",
-    "alarms"
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
-    "http://*",
-    "https://*"
+    "<all_urls>"
   ],
   "background": {
-    "service_worker": "src/background/index.js"
+    "service_worker": "src/background/index.js",
+    "type": "module"
   },
   "content_scripts": [
     {
@@ -31,15 +32,5 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "Deep Work Agent"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/popup/main.jsx"
-      ],
-      "matches": [
-        "*://*/*"
-      ]
-    }
-  ]
+  }
 }
