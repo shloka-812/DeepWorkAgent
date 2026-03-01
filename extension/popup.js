@@ -18,6 +18,9 @@ const toggleBtn = document.getElementById('toggleBtn');
 const btnIcon = document.getElementById('btnIcon');
 const btnText = document.getElementById('btnText');
 const backendStatus = document.getElementById('backendStatus');
+const summaryBtn = document.getElementById('summaryBtn');
+const summaryDashboard = document.getElementById('summaryDashboard');
+const summaryClose = document.getElementById('summaryClose');
 
 // Format time as MM:SS or H:MM:SS
 function formatTime(seconds) {
@@ -128,6 +131,12 @@ function toggleSession() {
 
 // Event listeners
 toggleBtn.addEventListener('click', toggleSession);
+summaryBtn.addEventListener('click', function() {
+    summaryDashboard.classList.add('visible');
+});
+summaryClose.addEventListener('click', function() {
+    summaryDashboard.classList.remove('visible');
+});
 
 // Initialize
 loadStats();

@@ -7,10 +7,9 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: 'dist',
-    minify: 'terser',
+    minify: false,
     rollupOptions: {
       input: {
-        popup: path.resolve(__dirname, 'popup.html'),
         background: path.resolve(__dirname, 'src/background/index.js'),
         content: path.resolve(__dirname, 'src/content/overlay.js'),
       },

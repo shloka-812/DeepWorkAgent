@@ -9,6 +9,7 @@ function App() {
   const [sessionDuration, setSessionDuration] = useState(0);
   const [interventionCount, setInterventionCount] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [showSummary, setShowSummary] = useState(false);
 
   // Format seconds to HH:MM:SS
   const formatTime = (seconds) => {
@@ -139,6 +140,51 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Focus Summary Button */}
+      <button
+        className="summary-button"
+        onClick={() => setShowSummary(!showSummary)}
+      >
+        <span>📊</span>
+        <span>Focus Summary</span>
+      </button>
+
+      {/* Focus Summary Dashboard */}
+      {showSummary && (
+        <div className="summary-dashboard visible">
+          <div className="summary-header">
+            <span className="summary-title">📊 Focus Summary</span>
+            <button className="summary-close" onClick={() => setShowSummary(false)}>×</button>
+          </div>
+          <div className="summary-grid">
+            <div className="summary-stat">
+              <div className="summary-stat-value">2h 45m</div>
+              <div className="summary-stat-label">Total Focus Time</div>
+            </div>
+            <div className="summary-stat">
+              <div className="summary-stat-value">12</div>
+              <div className="summary-stat-label">Sessions Today</div>
+            </div>
+            <div className="summary-stat">
+              <div className="summary-stat-value">85%</div>
+              <div className="summary-stat-label">Focus Score</div>
+            </div>
+            <div className="summary-stat">
+              <div className="summary-stat-value">7</div>
+              <div className="summary-stat-label">Distractions Blocked</div>
+            </div>
+          </div>
+          <div className="summary-insights">
+            <div className="summary-insights-title">Today's Insights</div>
+            <ul className="summary-insights-list">
+              <li>🎯 Most productive: 9 AM - 11 AM</li>
+              <li>⚡ Average session: 23 minutes</li>
+              <li>🚀 Focus improved 12% vs yesterday</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Current Tab */}
       {currentTab && currentTab.url && !currentTab.url.startsWith('chrome://') && (

@@ -199,6 +199,121 @@
         
         .backend-status.connected { color: #22c55e; }
         .backend-status.disconnected { color: #ef4444; }
+        
+        /* Focus Summary Button */
+        .summary-button {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 16px;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(99, 102, 241, 0.1);
+            color: #a5b4fc;
+        }
+        
+        .summary-button:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.6);
+        }
+        
+        /* Focus Summary Dashboard */
+        .summary-dashboard {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+            background: rgba(99, 102, 241, 0.05);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 12px;
+        }
+        
+        .summary-dashboard.visible { display: flex; }
+        
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .summary-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #a5b4fc;
+        }
+        
+        .summary-close {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.5);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+        }
+        
+        .summary-close:hover { color: #fff; }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .summary-stat {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        .summary-stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #fff;
+        }
+        
+        .summary-stat-label {
+            font-size: 10px;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+        
+        .summary-insights {
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .summary-insights-title {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .summary-insights-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .summary-insights-list li {
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
     </style>
 </head>
 <body>
@@ -231,6 +346,46 @@
                         <span class="stat-label">Interventions</span>
                     </div>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Focus Summary Button -->
+        <button class="summary-button" id="summaryBtn">
+            <span>📊</span>
+            <span>Focus Summary</span>
+        </button>
+        
+        <!-- Focus Summary Dashboard -->
+        <div class="summary-dashboard" id="summaryDashboard">
+            <div class="summary-header">
+                <span class="summary-title">📊 Focus Summary</span>
+                <button class="summary-close" id="summaryClose">×</button>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-stat">
+                    <div class="summary-stat-value">2h 45m</div>
+                    <div class="summary-stat-label">Total Focus Time</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-value">12</div>
+                    <div class="summary-stat-label">Sessions Today</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-value">85%</div>
+                    <div class="summary-stat-label">Focus Score</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-value">7</div>
+                    <div class="summary-stat-label">Distractions Blocked</div>
+                </div>
+            </div>
+            <div class="summary-insights">
+                <div class="summary-insights-title">Today's Insights</div>
+                <ul class="summary-insights-list">
+                    <li>🎯 Most productive: 9 AM - 11 AM</li>
+                    <li>⚡ Average session: 23 minutes</li>
+                    <li>🚀 Focus improved 12% vs yesterday</li>
+                </ul>
             </div>
         </div>
 
