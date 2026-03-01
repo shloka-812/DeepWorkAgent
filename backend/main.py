@@ -7,6 +7,7 @@ from crew import run_crew, get_escalation_key, schedule_escalations, cancel_esca
 from actions.calendar_action import get_current_and_next_event, check_meeting_approaching
 from actions.slack_action import send_slack_nudge
 from db.logger import start_session, end_session, log_tab_event, log_agent_decision, get_session_context
+from llm import quick_decision
 
 # Global context to share state across requests
 agent_context = {
@@ -21,7 +22,7 @@ agent_context = {
 async def meeting_check_loop():
     """Checks every 5 minutes if a meeting is approaching."""
     while True:
-        await asyncio.sleep(300)  # Every 5 mins
+        await asyncio.sleep(300)
         if not agent_context.get("focus_active"):
             continue
         try:
@@ -32,17 +33,14 @@ async def meeting_check_loop():
                     f"{meeting['starts_in_mins']} minutes. "
                     f"Good stopping point?"
                 )
-                # Run sync slack call in thread to avoid blocking loop
                 await asyncio.to_thread(send_slack_nudge, msg)
         except Exception as e:
             print(f"[MeetingCheck Error] {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Start meeting check loop
     asyncio.create_task(meeting_check_loop())
     yield
-    # Shutdown: Clean up if needed
 
 app = FastAPI(title="Deep Work Agent Backend", version="0.1.0", lifespan=lifespan)
 
@@ -61,9 +59,6 @@ def health():
 
 @app.get("/insights")
 async def handle_get_insights():
-    """
-    Returns AI-powered productivity insights from Snowflake + Cortex.
-    """
     try:
         insights = await asyncio.to_thread(get_full_insights)
         return insights
@@ -73,24 +68,14 @@ async def handle_get_insights():
 
 @app.post("/intent_response")
 async def handle_intent_response(data: dict):
-    """
-    Called by extension when user answers the ASK dialog.
-    intent = "work_related" → cancel escalations
-    intent = "distraction"  → trigger immediate block
-    """
     intent = data.get("intent")
-    key = data.get("key") # The escalation key
-    
+    key = data.get("key")
     print(f"Received intent response: {intent} for key: {key}")
-    
     if intent == "work_related":
         cancel_escalations(key)
         return {"status": "cancelled", "message": "Escalations stopped."}
-    
     elif intent == "distraction":
-        # In a real app, this would trigger an immediate block command to the extension
         return {"status": "blocked", "message": "Triggering immediate block."}
-    
     return {"status": "ignored"}
 
 @app.post("/event", response_model=AgentResponse)
@@ -102,13 +87,13 @@ async def handle_event(event: TabEvent):
         agent_context["current_app"] = event.app
         agent_context["current_window"] = event.window_title
         agent_context["inferred_task_mac"] = event.inferred_task
-    
+
     # 2. Enrich browser events with Mac context
     if event.source == "browser":
         if not event.app:
             event.app = agent_context.get("current_app") or "Chrome"
         if not event.window_title:
-             event.window_title = agent_context.get("current_window")
+            event.window_title = agent_context.get("current_window")
 
     # 3. Handle session events
     if event.event == "session_start":
@@ -137,21 +122,77 @@ async def handle_event(event: TabEvent):
 
     # 5. Log activity to Snowflake
     if event.event != "heartbeat":
-        await asyncio.to_thread(log_tab_event, event.dict())
+        await asyncio.to_thread(
+            log_tab_event,
+            url=event.url,
+            title=event.title,
+            domain=event.domain,
+            is_distraction=event.is_distraction,
+            inferred_task=event.inferred_task,
+            navigation_type=event.navigation_type,
+            referrer=event.referrer,
+            source=event.source
+        )
 
-    # 6. Run the Agent Brain
+    # ════════════════════════════════════════════════════════
+    # 6. QUICK DECISION — skip LLM for obvious sites
+    # ════════════════════════════════════════════════════════
+    if event.event == "tab_change" and event.domain:
+        quick = quick_decision(event.domain)
+        if quick:
+            print(f"[Quick Decision] {event.domain} → {quick['action']} (0 tokens used)")
+
+            # Log the quick decision to Snowflake
+            decision_data = {
+                "domain": event.domain,
+                "app": event.app,
+                "url_type": "known",
+                "navigation_type": event.navigation_type,
+                "intent": "distraction" if quick["action"] == "block_tab" else "work_related",
+                "intent_confidence": 1.0,
+                "verdict": quick["action"],
+                "primary_reason": quick["reasoning"],
+                "dwell_seconds": event.dwell_seconds or 0,
+                "grace_period_total": 0
+            }
+            await asyncio.to_thread(log_agent_decision, decision_data)
+
+            # Send Slack nudge for blocks
+            if quick["action"] == "block_tab":
+                slack_msg = f"🎯 Blocked {event.domain} during your focus session."
+                await asyncio.to_thread(send_slack_nudge, slack_msg)
+
+            return AgentResponse(
+                action=quick["action"],
+                message=quick["message"],
+                reasoning=quick["reasoning"]
+            )
+
+    # ════════════════════════════════════════════════════════
+    # 7. CREW DECISION — LLM for ambiguous sites only
+    # ════════════════════════════════════════════════════════
     try:
         response = run_crew(
-            event, 
+            event,
             calendar_context=agent_context.get("calendar"),
             history_context=agent_context.get("history")
         )
-        
+
         # Log decision
-        decision_data = event.dict()
-        decision_data.update(response.dict())
+        decision_data = {
+            "domain": event.domain,
+            "app": event.app,
+            "url_type": "unknown",
+            "navigation_type": event.navigation_type,
+            "intent": "unknown",
+            "intent_confidence": 0,
+            "verdict": response.action.value if hasattr(response.action, 'value') else response.action,
+            "primary_reason": response.reasoning,
+            "dwell_seconds": event.dwell_seconds or 0,
+            "grace_period_total": 0
+        }
         await asyncio.to_thread(log_agent_decision, decision_data)
-        
+
         # Execute immediate actions
         if response.slack_message:
             await asyncio.to_thread(send_slack_nudge, response.slack_message)
@@ -160,11 +201,17 @@ async def handle_event(event: TabEvent):
         if response.escalation_schedule:
             key = get_escalation_key(event.domain, event.app)
             await schedule_escalations(key, response.escalation_schedule)
-            
+
         return response
+
     except Exception as e:
-        print(f"Crew error: {e}")
-        return AgentResponse(action="none", reasoning=f"Agent Error: {str(e)}")
+        print(f"[Crew Error] {e}")
+        # Fallback — always return something so extension UI works
+        return AgentResponse(
+            action="block_tab",
+            message="Agent busy — stay focused on your task.",
+            reasoning=f"Fallback due to error: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

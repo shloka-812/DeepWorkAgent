@@ -142,7 +142,7 @@ Key additions:
 | Domain | Base Grace | Specific URL Bonus |
 |---|---|---|
 | `youtube.com` | 5 min | +7 min if specific video |
-| `slack.com` | 10 min | 0 (watch channel name instead) |
+| `slack.com` | 20 min | 0 (watch channel name instead) |
 | `medium.com` | Never block | — |
 | `stackoverflow.com` | Never block | — |
 | `github.com` | Never block | — |

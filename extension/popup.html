@@ -1,97 +1,280 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Deep Work Agent</title>
-  <style>
-    body {
-      width: 300px;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #121212;
-      color: #ffffff;
-    }
-    .container {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-    }
-    .status-badge {
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 20px;
-    }
-    .status-inactive {
-      background-color: #333333;
-      color: #aaaaaa;
-    }
-    .status-active {
-      background-color: rgba(34, 197, 94, 0.2);
-      color: #22c55e;
-      box-shadow: 0 0 10px rgba(34, 197, 94, 0.3);
-    }
-    .title {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0 0 8px 0;
-    }
-    .task-desc {
-      font-size: 14px;
-      color: #9ca3af;
-      margin: 0 0 24px 0;
-      line-height: 1.4;
-    }
-    button {
-      width: 100%;
-      padding: 12px;
-      border-radius: 8px;
-      border: none;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .btn-start {
-      background-color: #3b82f6;
-      color: white;
-    }
-    .btn-start:hover {
-      background-color: #2563eb;
-    }
-    .btn-stop {
-      background-color: #ef4444;
-      color: white;
-    }
-    .btn-stop:hover {
-      background-color: #dc2626;
-    }
-    .pulse {
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Work Agent</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            width: 320px;
+            min-height: 380px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(145deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            color: #fff;
+        }
+        
+        .popup-container {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 8px 0 4px;
+        }
+        
+        .header-icon { font-size: 32px; margin-bottom: 4px; }
+        .header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+        .subtitle {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+        
+        .status-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .status-card.active {
+            border-color: rgba(34,197,94,0.4);
+            background: linear-gradient(145deg, rgba(34,197,94,0.1) 0%, rgba(34,197,94,0.05) 100%);
+            box-shadow: 0 0 20px rgba(34,197,94,0.1);
+        }
+        
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+        
+        .status-dot.active {
+            background: #22c55e;
+            box-shadow: 0 0 8px rgba(34,197,94,0.6);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(34,197,94,0.6); }
+            50% { opacity: 0.7; box-shadow: 0 0 16px rgba(34,197,94,0.4); }
+        }
+        
+        .status-label { font-size: 13px; font-weight: 600; }
+        
+        .session-stats {
+            display: none;
+            gap: 12px;
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .session-stats.visible { display: flex; }
+        
+        .stat {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 10px 12px;
+            border-radius: 8px;
+        }
+        
+        .stat-icon { font-size: 18px; }
+        .stat-content { display: flex; flex-direction: column; }
+        .stat-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .stat-label { font-size: 10px; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .current-tab-card {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        
+        .tab-label { font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 1px; }
+        .tab-domain { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.8); word-break: break-all; }
+        
+        .warning-card {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            background: rgba(251,191,36,0.1);
+            border: 1px solid rgba(251,191,36,0.3);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 11px;
+            color: #fbbf24;
+        }
+        
+        .warning-card.visible { display: flex; }
+        
+        .controls { display: flex; gap: 8px; }
+        
+        .primary-button {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: #000;
+        }
+        
+        .primary-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(34,197,94,0.4);
+        }
+        
+        .primary-button.stop {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        
+        .primary-button.stop:hover {
+            background: rgba(239,68,68,0.2);
+            border-color: rgba(239,68,68,0.4);
+        }
+        
+        .info-details {
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+        }
+        
+        .info-details summary {
+            cursor: pointer;
+            color: rgba(255,255,255,0.6);
+            font-weight: 500;
+            list-style: none;
+        }
+        
+        .info-details summary::-webkit-details-marker { display: none; }
+        .info-details summary:hover { color: rgba(255,255,255,0.9); }
+        .info-details[open] summary { margin-bottom: 10px; color: rgba(255,255,255,0.9); }
+        
+        .info-content { color: rgba(255,255,255,0.6); line-height: 1.5; }
+        .info-content p { margin: 0 0 6px; }
+        .info-content ul { margin: 0; padding-left: 18px; }
+        .info-content li { margin: 3px 0; }
+        
+        .footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            font-size: 10px;
+            color: rgba(255,255,255,0.3);
+        }
+        
+        .backend-status.connected { color: #22c55e; }
+        .backend-status.disconnected { color: #ef4444; }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <div id="statusIndicator" class="status-badge status-inactive">Idle</div>
-    <h1 class="title">Deep Work Agent</h1>
-    <p id="taskDescription" class="task-desc">Not currently in a focus session.</p>
-    
-    <button id="toggleBtn" class="btn-start">Start Focus Session</button>
-  </div>
+    <div class="popup-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-icon">🎯</div>
+            <h1>Deep Work Agent</h1>
+            <p class="subtitle">Intent-aware focus protection</p>
+        </div>
 
-  <script type="module" src="popup.js"></script>
+        <!-- Session Status -->
+        <div class="status-card" id="statusCard">
+            <div class="status-badge">
+                <span class="status-dot" id="statusDot"></span>
+                <span class="status-label" id="statusLabel">Session Inactive</span>
+            </div>
+            <div class="session-stats" id="sessionStats">
+                <div class="stat">
+                    <span class="stat-icon">⏱️</span>
+                    <div class="stat-content">
+                        <span class="stat-value" id="sessionTime">0:00</span>
+                        <span class="stat-label">Session Time</span>
+                    </div>
+                </div>
+                <div class="stat">
+                    <span class="stat-icon">🛡️</span>
+                    <div class="stat-content">
+                        <span class="stat-value" id="interventionCount">0</span>
+                        <span class="stat-label">Interventions</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Tab -->
+        <div class="current-tab-card" id="currentTabCard" style="display:none;">
+            <span class="tab-label">Current Tab</span>
+            <span class="tab-domain" id="tabDomain"></span>
+        </div>
+
+        <!-- Warning -->
+        <div class="warning-card" id="warningCard">
+            <span>⚠️</span>
+            <span>Backend not reachable at localhost:8000</span>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="primary-button" id="toggleBtn">
+                <span id="btnIcon">▶️</span>
+                <span id="btnText">Start Focus Session</span>
+            </button>
+        </div>
+
+        <!-- Info -->
+        <details class="info-details">
+            <summary>ℹ️ How it works</summary>
+            <div class="info-content">
+                <p>When active, the agent:</p>
+                <ul>
+                    <li>Monitors your tab changes</li>
+                    <li>Assesses intent with AI</li>
+                    <li>Asks clarifying questions (ASK)</li>
+                    <li>Escalates: nudge → block</li>
+                </ul>
+            </div>
+        </details>
+
+        <!-- Footer -->
+        <div class="footer">
+            <span>v2.0.0</span>
+            <span class="backend-status" id="backendStatus">○ Disconnected</span>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
 </body>
 </html>

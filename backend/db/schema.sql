@@ -3,9 +3,10 @@ USE DATABASE DEEP_WORK;
 CREATE SCHEMA IF NOT EXISTS AGENT;
 USE SCHEMA AGENT;
 
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- FOCUS SESSIONS
--- ═══════════════════════════════════════════════════════════
+-- Tracks individual focus work sessions
+-- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS FOCUS_SESSIONS (
     session_id         VARCHAR(36) DEFAULT UUID_STRING() PRIMARY KEY,
     started_at         TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
@@ -13,13 +14,14 @@ CREATE TABLE IF NOT EXISTS FOCUS_SESSIONS (
     duration_secs      INTEGER,
     focus_score        FLOAT,
     intervention_count INTEGER DEFAULT 0,
-    calendar_task      VARCHAR(500),
+    calendar_task      VARCHAR(500),    -- What calendar said user should be doing
     created_at         TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- TAB EVENTS
--- ═══════════════════════════════════════════════════════════
+-- Every browser tab change and app switch
+-- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS TAB_EVENTS (
     event_id           VARCHAR(36) DEFAULT UUID_STRING() PRIMARY KEY,
     session_id         VARCHAR(36),
@@ -29,16 +31,17 @@ CREATE TABLE IF NOT EXISTS TAB_EVENTS (
     is_distraction     BOOLEAN DEFAULT FALSE,
     inferred_task      VARCHAR(500),
     navigation_type    VARCHAR(50),     -- direct_type|search_referrer|link_click
-    referrer           VARCHAR(200),    -- where user came from
-    dwell_seconds      INTEGER DEFAULT 0, -- time on this domain
+    referrer           VARCHAR(200),    -- Where user came from
+    dwell_seconds      INTEGER DEFAULT 0, -- Time spent on this domain
     source             VARCHAR(20) DEFAULT 'browser', -- browser|mac_system
     event_time         TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- AGENT DECISIONS
 -- Logs every decision the agent made including allows
--- ═══════════════════════════════════════════════════════════
+-- This is what makes the agent smarter over time
+-- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS AGENT_DECISIONS (
     decision_id        VARCHAR(36) DEFAULT UUID_STRING() PRIMARY KEY,
     session_id         VARCHAR(36),
@@ -57,9 +60,10 @@ CREATE TABLE IF NOT EXISTS AGENT_DECISIONS (
     decided_at         TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- INTERVENTIONS
--- ═══════════════════════════════════════════════════════════
+-- When the agent actually intervened (nudge, block, etc.)
+-- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS INTERVENTIONS (
     intervention_id    VARCHAR(36) DEFAULT UUID_STRING() PRIMARY KEY,
     session_id         VARCHAR(36),
@@ -67,14 +71,15 @@ CREATE TABLE IF NOT EXISTS INTERVENTIONS (
     action_type        VARCHAR(50),
     message            VARCHAR(500),
     hour_of_day        INTEGER,
-    user_returned      BOOLEAN,         -- did user go back to work?
-    return_delay_secs  INTEGER,         -- how long before returning?
+    user_returned      BOOLEAN,         -- Did user go back to work?
+    return_delay_secs  INTEGER,         -- How long before returning?
     intervened_at      TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- HOURLY FOCUS SCORES
--- ═══════════════════════════════════════════════════════════
+-- Aggregated focus scores by hour for pattern detection
+-- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS HOURLY_FOCUS_SCORES (
     score_id      VARCHAR(36) DEFAULT UUID_STRING() PRIMARY KEY,
     hour_of_day   INTEGER NOT NULL,
@@ -83,10 +88,11 @@ CREATE TABLE IF NOT EXISTS HOURLY_FOCUS_SCORES (
     recorded_at   TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
 );
 
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- VIEWS
--- ═══════════════════════════════════════════════════════════
+-- ═══════════════════════════════════════════════════════════════════════════
 
+-- Today's summary for dashboard
 CREATE OR REPLACE VIEW V_TODAY_SUMMARY AS
 SELECT
     COUNT(DISTINCT s.session_id)         AS sessions_today,
@@ -97,6 +103,7 @@ SELECT
 FROM FOCUS_SESSIONS s
 WHERE DATE(s.started_at) = CURRENT_DATE();
 
+-- Top distractions (last 7 days)
 CREATE OR REPLACE VIEW V_TOP_DISTRACTIONS AS
 SELECT domain, COUNT(*) AS visit_count
 FROM TAB_EVENTS
@@ -104,12 +111,14 @@ WHERE is_distraction = TRUE
   AND event_time >= DATEADD('day', -7, CURRENT_TIMESTAMP())
 GROUP BY domain ORDER BY visit_count DESC LIMIT 5;
 
+-- Hourly focus pattern (last 14 days)
 CREATE OR REPLACE VIEW V_HOURLY_FOCUS_PATTERN AS
 SELECT hour_of_day, AVG(focus_score) AS avg_focus_score, COUNT(*) AS sample_count
 FROM HOURLY_FOCUS_SCORES
 WHERE session_date >= DATEADD('day', -14, CURRENT_DATE())
 GROUP BY hour_of_day ORDER BY hour_of_day;
 
+-- Dwell patterns by domain (helps calibrate grace periods)
 CREATE OR REPLACE VIEW V_DWELL_PATTERNS AS
 SELECT
     domain,
@@ -122,6 +131,7 @@ WHERE dwell_seconds > 0
   AND event_time >= DATEADD('day', -14, CURRENT_TIMESTAMP())
 GROUP BY domain ORDER BY avg_dwell_minutes DESC;
 
+-- Nudge effectiveness (did nudges actually work?)
 CREATE OR REPLACE VIEW V_NUDGE_EFFECTIVENESS AS
 SELECT
     action_type,
@@ -132,3 +142,16 @@ SELECT
 FROM INTERVENTIONS
 WHERE intervened_at >= DATEADD('day', -14, CURRENT_TIMESTAMP())
 GROUP BY action_type;
+
+-- Decision patterns (what verdicts are most common)
+CREATE OR REPLACE VIEW V_DECISION_PATTERNS AS
+SELECT
+    domain,
+    verdict,
+    COUNT(*) AS decision_count,
+    AVG(intent_confidence) AS avg_confidence,
+    AVG(dwell_seconds) / 60.0 AS avg_dwell_minutes
+FROM AGENT_DECISIONS
+WHERE decided_at >= DATEADD('day', -14, CURRENT_TIMESTAMP())
+GROUP BY domain, verdict
+ORDER BY decision_count DESC;

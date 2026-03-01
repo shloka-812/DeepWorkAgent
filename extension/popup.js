@@ -1,62 +1,144 @@
-document.addEventListener('DOMContentLoaded', async () => {
-  const toggleBtn = document.getElementById('toggleBtn');
-  const statusIndicator = document.getElementById('statusIndicator');
-  const taskDescription = document.getElementById('taskDescription');
+// Deep Work Agent - Popup Script
+// State
+let sessionActive = false;
+let sessionStartTime = null;
+let timerInterval = null;
 
-  // Load initial state
-  chrome.storage.local.get(['focusActive', 'currentTask'], (result) => {
-    updateUI(result.focusActive, result.currentTask);
-  });
+// DOM elements
+const statusCard = document.getElementById('statusCard');
+const statusDot = document.getElementById('statusDot');
+const statusLabel = document.getElementById('statusLabel');
+const sessionStats = document.getElementById('sessionStats');
+const sessionTime = document.getElementById('sessionTime');
+const interventionCount = document.getElementById('interventionCount');
+const currentTabCard = document.getElementById('currentTabCard');
+const tabDomain = document.getElementById('tabDomain');
+const warningCard = document.getElementById('warningCard');
+const toggleBtn = document.getElementById('toggleBtn');
+const btnIcon = document.getElementById('btnIcon');
+const btnText = document.getElementById('btnText');
+const backendStatus = document.getElementById('backendStatus');
 
-  // Also check with background script to ensure sync
-  chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (response) => {
-    if (response) {
-      updateUI(response.focusActive, null);
+// Format time as MM:SS or H:MM:SS
+function formatTime(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hrs > 0) {
+        return hrs + ':' + mins.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
     }
-  });
+    return mins + ':' + secs.toString().padStart(2, '0');
+}
 
-  toggleBtn.addEventListener('click', () => {
-    chrome.storage.local.get('focusActive', (result) => {
-      const isCurrentlyActive = result.focusActive || false;
-      const newActiveState = !isCurrentlyActive;
-      
-      const msgType = newActiveState ? 'START_FOCUS' : 'STOP_FOCUS';
-      
-      toggleBtn.disabled = true;
-      toggleBtn.textContent = 'Updating...';
-
-      chrome.runtime.sendMessage({ type: msgType }, (response) => {
-        if (response && response.success) {
-          updateUI(newActiveState, null);
-        } else {
-          // Revert UI on failure
-          updateUI(isCurrentlyActive, null);
-        }
-      });
-    });
-  });
-
-  function updateUI(isActive, currentTask) {
-    if (isActive) {
-      statusIndicator.textContent = 'Active Focus Block';
-      statusIndicator.className = 'status-badge status-active pulse';
-      
-      toggleBtn.textContent = 'Stop Focus Session';
-      toggleBtn.className = 'btn-stop';
-      
-      // We would ideally fetch the current task from the backend here
-      taskDescription.textContent = currentTask || "Monitoring activity and shielding your focus.";
-      taskDescription.style.color = '#e5e7eb';
+// Update UI based on session state
+function updateUI() {
+    if (sessionActive) {
+        statusCard.classList.add('active');
+        statusDot.classList.add('active');
+        statusLabel.textContent = 'Focus Session Active';
+        sessionStats.classList.add('visible');
+        toggleBtn.classList.add('stop');
+        btnIcon.textContent = '⏹️';
+        btnText.textContent = 'Stop Session';
     } else {
-      statusIndicator.textContent = 'Idle';
-      statusIndicator.className = 'status-badge status-inactive';
-      
-      toggleBtn.textContent = 'Start Focus Session';
-      toggleBtn.className = 'btn-start';
-      
-      taskDescription.textContent = "Not currently in a focus session. Distractions are allowed.";
-      taskDescription.style.color = '#9ca3af';
+        statusCard.classList.remove('active');
+        statusDot.classList.remove('active');
+        statusLabel.textContent = 'Session Inactive';
+        sessionStats.classList.remove('visible');
+        toggleBtn.classList.remove('stop');
+        btnIcon.textContent = '▶️';
+        btnText.textContent = 'Start Focus Session';
     }
-    toggleBtn.disabled = false;
-  }
-});
+}
+
+// Update timer display
+function updateTimer() {
+    if (sessionActive && sessionStartTime) {
+        const elapsed = Math.floor((Date.now() - sessionStartTime) / 1000);
+        sessionTime.textContent = formatTime(elapsed);
+    }
+}
+
+// Load session stats from background
+function loadStats() {
+    chrome.runtime.sendMessage({ type: 'GET_SESSION_STATS' }, function(response) {
+        if (response) {
+            sessionActive = response.sessionActive || false;
+            sessionStartTime = response.sessionStartTime || null;
+            interventionCount.textContent = response.interventionCount || 0;
+            updateUI();
+            updateTimer();
+        }
+    });
+}
+
+// Load current tab info
+function loadCurrentTab() {
+    chrome.runtime.sendMessage({ type: 'GET_CURRENT_TAB' }, function(response) {
+        if (response && response.url && !response.url.startsWith('chrome://')) {
+            try {
+                var url = new URL(response.url);
+                tabDomain.textContent = url.hostname;
+                currentTabCard.style.display = 'flex';
+            } catch (e) {
+                currentTabCard.style.display = 'none';
+            }
+        } else {
+            currentTabCard.style.display = 'none';
+        }
+    });
+}
+
+// Check backend connectivity
+function checkBackend() {
+    fetch('http://localhost:8000/health', { method: 'GET' })
+        .then(function(res) {
+            backendStatus.textContent = '● Connected';
+            backendStatus.classList.add('connected');
+            backendStatus.classList.remove('disconnected');
+            warningCard.classList.remove('visible');
+        })
+        .catch(function() {
+            backendStatus.textContent = '○ Disconnected';
+            backendStatus.classList.add('disconnected');
+            backendStatus.classList.remove('connected');
+            if (sessionActive) {
+                warningCard.classList.add('visible');
+            }
+        });
+}
+
+// Toggle session
+function toggleSession() {
+    var messageType = sessionActive ? 'STOP_SESSION' : 'START_SESSION';
+    chrome.runtime.sendMessage({ type: messageType }, function(response) {
+        if (response && response.success) {
+            sessionActive = !sessionActive;
+            if (sessionActive) {
+                sessionStartTime = Date.now();
+                interventionCount.textContent = '0';
+            } else {
+                sessionStartTime = null;
+                warningCard.classList.remove('visible');
+            }
+            updateUI();
+        }
+    });
+}
+
+// Event listeners
+toggleBtn.addEventListener('click', toggleSession);
+
+// Initialize
+loadStats();
+loadCurrentTab();
+checkBackend();
+
+// Update timer every second
+timerInterval = setInterval(function() {
+    updateTimer();
+    loadStats();
+}, 1000);
+
+// Check backend every 5 seconds
+setInterval(checkBackend, 5000);

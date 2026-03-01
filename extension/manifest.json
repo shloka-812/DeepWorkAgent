@@ -2,22 +2,34 @@
   "manifest_version": 3,
   "name": "Deep Work Agent",
   "version": "2.0.0",
-  "description": "An autonomous agent that understands your workflow and protects your focus.",
+  "description": "AI-powered browser monitoring for deep work focus",
   "permissions": [
-    "tabs", "storage", "idle", "alarms",
-    "declarativeNetRequest", "notifications", "scripting", "webNavigation"
+    "tabs",
+    "activeTab",
+    "scripting",
+    "storage",
+    "alarms",
+    "notifications"
   ],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "src/background/index.js"
   },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/overlay.js"
+      ]
+    }
+  ],
   "action": {
-    "default_popup": "popup.html"
-  },
-  "declarative_net_request": {
-    "rule_resources": [{
-      "id": "block_rules", "enabled": true, "path": "rules.json"
-    }]
+    "default_popup": "popup.html",
+    "default_title": "Deep Work Agent"
   }
 }
